@@ -46,12 +46,24 @@
       const { useState, useEffect, useRef } = React;
 
       // =========================================================================================
-      // CẤU HÌNH API KEY (DÀNH CHO CHỦ APP)
-      // Dán API Key của bạn vào giữa hai dấu nháy đơn bên dưới.
-      // Người chơi sẽ KHÔNG cần nhập key nữa.
+      // CẤU HÌNH BẢO MẬT (MÃ HÓA BASE64)
+      // 1. Vào trang https://www.base64encode.org/
+      // 2. Dán API Key gốc của bạn vào (Ví dụ: AIzaSy...)
+      // 3. Nhấn ENCODE, copy chuỗi kết quả (Ví dụ: QUl6YVN5...)
+      // 4. Dán chuỗi kết quả vào biến ENCODED_KEY bên dưới.
       // =========================================================================================
-      const API_KEY = 'AIzaSyAd_7B-Ve2YpbP3kbgpB3AzbHYCAvaxAxw'; 
-      // Ví dụ: const API_KEY = 'AIzaSyD...';
+      const ENCODED_KEY = 'PASTE_YOUR_BASE64_ENCODED_KEY_HERE'; 
+      
+      // Hàm giải mã key an toàn hơn
+      const getApiKey = () => {
+        try {
+          if (!ENCODED_KEY || ENCODED_KEY.includes('PASTE_YOUR')) return '';
+          return atob(ENCODED_KEY);
+        } catch (e) {
+          console.error("Lỗi giải mã Key:", e);
+          return '';
+        }
+      };
 
       // --- CONFIG ---
       const Difficulty = {
@@ -71,14 +83,14 @@
       };
 
       // --- SERVICES ---
-      const ai = new GoogleGenAI({ apiKey: API_KEY });
-
       const generateAnswer = async (question, difficulty) => {
-        if (!API_KEY || API_KEY === 'PASTE_YOUR_API_KEY_HERE') {
-            alert("⚠️ LỖI: Chủ App chưa cấu hình API Key trong code!");
+        const apiKey = getApiKey();
+        if (!apiKey) {
+            alert("⚠️ LỖI CẤU HÌNH: Bạn chưa điền Key đã mã hóa (Encoded Key) vào code.");
             throw new Error("Missing Key");
         }
 
+        const ai = new GoogleGenAI({ apiKey });
         const model = "gemini-2.5-flash";
         const prompt = `
           You are an expert English tutor.
@@ -106,8 +118,10 @@
       };
 
       const checkPronunciation = async (audioBase64, targetText) => {
-        if (!API_KEY || API_KEY === 'PASTE_YOUR_API_KEY_HERE') return "Lỗi: Chưa có API Key.";
-
+        const apiKey = getApiKey();
+        if (!apiKey) return "Lỗi: Chưa cấu hình API Key.";
+        
+        const ai = new GoogleGenAI({ apiKey });
         const response = await ai.models.generateContent({
           model: "gemini-2.5-flash",
           contents: {
@@ -225,14 +239,18 @@
         const [voices, setVoices] = useState([]);
         const [ttsConfig, setTtsConfig] = useState({ voiceURI: '', speed: 1.0 });
         const [speakingId, setSpeakingId] = useState(null);
+        // FIX: Thêm ref để giữ đối tượng âm thanh không bị browser dọn rác
+        const utteranceRef = useRef(null);
 
         // Practice State
         const [practiceData, setPracticeData] = useState({ isOpen: false, text: '', type: 'question' });
 
-        // Load Voices on Mount
+        // Load Voices - Improved Logic
         useEffect(() => {
           const loadVoices = () => {
             const all = window.speechSynthesis.getVoices();
+            if (all.length === 0) return; // Chưa tải xong
+
             const en = all.filter(v => v.lang.startsWith('en')); // Prefer English
             const list = en.length > 0 ? en : all;
             setVoices(list);
@@ -243,13 +261,20 @@
               setTtsConfig(prev => ({ ...prev, voiceURI: pref.voiceURI }));
             }
           };
+
           loadVoices();
           window.speechSynthesis.onvoiceschanged = loadVoices;
+          
+          // Fallback cho một số trình duyệt không fire sự kiện onvoiceschanged ngay
+          const interval = setInterval(loadVoices, 500);
+          setTimeout(() => clearInterval(interval), 5000); // Thử lại trong 5 giây
+          
+          return () => clearInterval(interval);
         }, []);
 
         const handleGenerate = async () => {
           setLoading(true);
-          window.speechSynthesis.cancel(); // Stop speaking
+          window.speechSynthesis.cancel();
           try {
             const res = await generateAnswer(question, difficulty);
             setResult(res);
@@ -261,18 +286,42 @@
         };
 
         const speak = (text, id) => {
+          // Cancel current
           window.speechSynthesis.cancel();
+          
           if (speakingId === id) {
             setSpeakingId(null);
             return;
           }
-          const u = new SpeechSynthesisUtterance(text);
-          const v = voices.find(vo => vo.voiceURI === ttsConfig.voiceURI);
-          if (v) u.voice = v;
-          u.rate = ttsConfig.speed;
-          u.onend = () => setSpeakingId(null);
-          setSpeakingId(id);
-          window.speechSynthesis.speak(u);
+
+          if (!text) return;
+
+          try {
+            const u = new SpeechSynthesisUtterance(text);
+            
+            // FIX: Gán vào Ref để tránh lỗi Garbage Collection
+            utteranceRef.current = u;
+
+            const v = voices.find(vo => vo.voiceURI === ttsConfig.voiceURI);
+            if (v) u.voice = v;
+            u.rate = ttsConfig.speed;
+            
+            u.onend = () => {
+              setSpeakingId(null);
+              utteranceRef.current = null; // Clean up ref
+            };
+            
+            u.onerror = (e) => {
+              console.error("TTS Error:", e);
+              setSpeakingId(null);
+            };
+
+            setSpeakingId(id);
+            window.speechSynthesis.speak(u);
+          } catch (e) {
+            console.error("Speak failed", e);
+            alert("Lỗi trình duyệt không hỗ trợ phát âm thanh này.");
+          }
         };
 
         return (
@@ -325,13 +374,13 @@
               {result && (
                 <div className="bg-white p-4 rounded-xl border flex flex-wrap gap-4 items-center justify-between">
                   <div className="flex items-center gap-2 w-full sm:w-auto flex-1">
-                    <span className="text-sm font-bold text-gray-500 whitespace-nowrap">Giọng đọc:</span>
+                    <span className="text-sm font-bold text-gray-500 whitespace-nowrap">Giọng đọc ({voices.length}):</span>
                     <select 
                       className="p-2 border rounded-lg text-sm w-full bg-gray-50"
                       value={ttsConfig.voiceURI}
                       onChange={e => setTtsConfig({...ttsConfig, voiceURI: e.target.value})}
                     >
-                      {voices.length === 0 && <option>Default</option>}
+                      {voices.length === 0 && <option>Đang tải giọng...</option>}
                       {voices.map(v => <option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>)}
                     </select>
                   </div>
