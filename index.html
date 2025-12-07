@@ -115,11 +115,29 @@
       }
 
       // --- SERVICES ---
-      // Safety check for process.env
-      const apiKey = (typeof process !== 'undefined' && process.env && process.env.API_KEY) ? process.env.API_KEY : '';
+      
+      // =========================================================================================
+      // CẤU HÌNH API KEY (QUAN TRỌNG CHO GITHUB PAGES)
+      // Để App chạy được trên GitHub Pages, bạn phải dán Key của mình vào bên dưới.
+      // Thay thế dòng chữ 'PASTE_YOUR_API_KEY_HERE' bằng API Key thật của bạn.
+      // =========================================================================================
+      const apiKey = 'PASTE_YOUR_API_KEY_HERE'; 
+      // Ví dụ: const apiKey = 'AIzaSyA....';
+      
       const ai = new GoogleGenAI({ apiKey });
 
+      // Hàm kiểm tra xem người dùng đã điền key chưa
+      const checkApiKey = () => {
+         if (!apiKey || apiKey === 'PASTE_YOUR_API_KEY_HERE' || apiKey === '') {
+             alert("⚠️ LỖI CẤU HÌNH:\n\nBạn chưa điền API Key vào file index.html.\n\nCách sửa: Mở file index.html, tìm dòng 'const apiKey' và dán key của bạn vào đó.");
+             return false;
+         }
+         return true;
+      };
+
       const generateAnswer = async (question, difficulty) => {
+        if (!checkApiKey()) throw new Error("Missing API Key");
+        
         try {
           const model = "gemini-2.5-flash";
           const prompt = `
@@ -177,6 +195,8 @@
       };
 
       const generateSpeech = async (text, voice) => {
+        if (!checkApiKey()) throw new Error("Missing API Key");
+
         try {
           const response = await ai.models.generateContent({
             model: "gemini-2.5-flash-preview-tts",
@@ -201,6 +221,8 @@
       };
 
       const checkPronunciation = async (audioBase64, targetText) => {
+        if (!checkApiKey()) return "Vui lòng cấu hình API Key trong file code.";
+
         try {
           const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
@@ -467,7 +489,7 @@
             const response = await generateAnswer(question, difficulty);
             setResult(response);
           } catch (error) {
-            alert("Đã có lỗi xảy ra khi tạo câu trả lời. Vui lòng thử lại.");
+            alert("Đã có lỗi xảy ra. Hãy kiểm tra xem bạn đã dán API Key vào file index.html chưa.");
           } finally {
             setIsGenerating(false);
           }
