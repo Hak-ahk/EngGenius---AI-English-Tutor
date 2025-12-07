@@ -11,7 +11,7 @@ const _sysConfig = {
     region: 'asia-se1',
     // DÁN KEY VÀO DÒNG DƯỚI ĐÂY (Trong dấu nháy)
     authToken: 'AIzaSyAd_7B-Ve2YpbP3kbgpB3AzbHYCAvaxAxw', 
-    timeout: 5000
+    timeout: 10000
 };
 
 // Hàm lấy key nội bộ
