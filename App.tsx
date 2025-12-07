@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Difficulty, VoiceName, GeneratedResponse, TtsConfig } from './types';
-import { generateAnswer, generateSpeech } from './services/gemini';
-import { decodeBase64, decodeAudioData } from './utils/audioUtils';
+import { Difficulty, GeneratedResponse, TtsConfig } from './types';
+import { generateAnswer } from './services/gemini';
 import { Spinner } from './components/Spinner';
 import { PracticeModal } from './components/PracticeModal';
 
@@ -11,98 +10,46 @@ function App() {
   const [result, setResult] = useState<GeneratedResponse | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   
-  // TTS State
+  // System TTS State
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [ttsConfig, setTtsConfig] = useState<TtsConfig>({
-    voice: VoiceName.Puck,
+    voiceURI: '',
     speed: 1.0,
   });
   
   // Track what is playing: 'full' or index of sentence
   const [activeAudioId, setActiveAudioId] = useState<string | number | null>(null);
-  const [loadingAudioId, setLoadingAudioId] = useState<string | number | null>(null);
-  
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
-  
-  // Audio Cache: Key = "VoiceName:Text", Value = AudioBuffer
-  const audioCacheRef = useRef<Map<string, AudioBuffer>>(new Map());
-  // Pending Requests: Key = "VoiceName:Text", Value = Promise<AudioBuffer>
-  // Prevents double-fetching if a request is already in flight
-  const pendingRequestsRef = useRef<Map<string, Promise<AudioBuffer>>>(new Map());
 
   // Practice State
   const [practiceModalOpen, setPracticeModalOpen] = useState(false);
   const [practiceType, setPracticeType] = useState<'question' | 'answer' | 'sentence'>('question');
   const [practiceText, setPracticeText] = useState('');
 
-  // Initialize AudioContext helper
-  const getAudioContext = () => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-    }
-    return audioContextRef.current;
-  };
-
-  // Optimized Fetcher: Checks Cache -> Checks In-Flight -> Fetches New
-  const fetchAudioBuffer = async (text: string, voice: VoiceName): Promise<AudioBuffer> => {
-    const cacheKey = `${voice}:${text}`;
-    
-    // 1. Check Cache (Instant)
-    if (audioCacheRef.current.has(cacheKey)) {
-      return audioCacheRef.current.get(cacheKey)!;
-    }
-
-    // 2. Check Pending Requests (Deduplication)
-    if (pendingRequestsRef.current.has(cacheKey)) {
-      return pendingRequestsRef.current.get(cacheKey)!;
-    }
-
-    // 3. Create new fetch promise
-    const fetchPromise = (async () => {
-        try {
-            const base64Audio = await generateSpeech(text, voice);
-            const rawBytes = decodeBase64(base64Audio);
-            
-            const ctx = getAudioContext();
-            if (ctx.state === 'suspended') {
-              // We don't await resume here during background preload to avoid errors if user hasn't interacted
-              // We just decode. Resume happens on Play.
-            }
-            const audioBuffer = await decodeAudioData(rawBytes, ctx, 24000);
-            
-            // Save to Cache
-            audioCacheRef.current.set(cacheKey, audioBuffer);
-            return audioBuffer;
-        } finally {
-            // Remove from pending map when done (success or fail)
-            pendingRequestsRef.current.delete(cacheKey);
-        }
-    })();
-
-    // Store the promise so subsequent calls wait for this one
-    pendingRequestsRef.current.set(cacheKey, fetchPromise);
-
-    return fetchPromise;
-  };
-
-  // AGGRESSIVE PRELOAD: Fetch EVERYTHING immediately
+  // Load System Voices
   useEffect(() => {
-    if (result?.english) {
-      const voice = ttsConfig.voice;
+    const loadVoices = () => {
+      const allVoices = window.speechSynthesis.getVoices();
+      // Filter for English voices (or all if none found)
+      const englishVoices = allVoices.filter(v => v.lang.startsWith('en'));
+      const availableVoices = englishVoices.length > 0 ? englishVoices : allVoices;
       
-      // 1. Preload Full Answer
-      fetchAudioBuffer(result.english, voice)
-        .catch(err => console.debug('Preload full failed (ignorable)', err));
+      setVoices(availableVoices);
 
-      // 2. Preload ALL Sentences concurrently
-      if (result.sentences) {
-        result.sentences.forEach(sentence => {
-           fetchAudioBuffer(sentence.english, voice)
-             .catch(err => console.debug('Preload sentence failed (ignorable)', err));
-        });
+      // Set default voice if not set
+      if (availableVoices.length > 0 && !ttsConfig.voiceURI) {
+        // Prefer "Google US English" or similar standard voices if available, otherwise first one
+        const preferred = availableVoices.find(v => v.name.includes('Google US English')) || availableVoices[0];
+        setTtsConfig(prev => ({ ...prev, voiceURI: preferred.voiceURI }));
       }
+    };
+
+    loadVoices();
+    
+    // Chrome requires this event to load voices asynchronously
+    if (window.speechSynthesis.onvoiceschanged !== undefined) {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
     }
-  }, [result, ttsConfig.voice]);
+  }, [ttsConfig.voiceURI]);
 
   const handleGenerate = async () => {
     if (!question.trim()) return;
@@ -110,73 +57,57 @@ function App() {
     setResult(null);
     stopAudio();
     
-    // Clear caches to free memory for new topic
-    audioCacheRef.current.clear();
-    pendingRequestsRef.current.clear();
-
-    // Warm up AudioContext on click
-    getAudioContext();
-
     try {
       const response = await generateAnswer(question, difficulty);
       setResult(response);
     } catch (error) {
-      alert("Đã có lỗi xảy ra khi tạo câu trả lời. Vui lòng thử lại.");
+      alert("Đã có lỗi xảy ra. Hãy kiểm tra xem bạn đã cấu hình API Key chưa.");
     } finally {
       setIsGenerating(false);
     }
   };
 
   const stopAudio = () => {
-    if (sourceNodeRef.current) {
-      sourceNodeRef.current.stop();
-      sourceNodeRef.current = null;
-    }
+    window.speechSynthesis.cancel();
     setActiveAudioId(null);
   };
 
-  const playAudio = async (text: string, id: string | number) => {
-    // Toggle off if clicking same button
+  const playAudio = (text: string, id: string | number) => {
+    // Stop any current speech
+    window.speechSynthesis.cancel();
+
+    // Toggle off if clicking the same button that is currently playing
     if (activeAudioId === id) {
-      stopAudio();
+      setActiveAudioId(null);
       return;
     }
+
+    const utterance = new SpeechSynthesisUtterance(text);
     
-    stopAudio();
-    setLoadingAudioId(id);
-
-    try {
-      // This will likely resolve instantly from cache/pending promise
-      const audioBuffer = await fetchAudioBuffer(text, ttsConfig.voice);
-
-      const ctx = getAudioContext();
-      // Important: Resume context if suspended (browser requirement)
-      if (ctx.state === 'suspended') {
-        await ctx.resume();
-      }
-
-      const source = ctx.createBufferSource();
-      source.buffer = audioBuffer;
-      source.playbackRate.value = ttsConfig.speed;
-      
-      source.connect(ctx.destination);
-      
-      source.onended = () => {
-        setActiveAudioId(null);
-      };
-      
-      sourceNodeRef.current = source;
-      source.start();
-      setActiveAudioId(id);
-    } catch (error) {
-      console.error(error);
-      alert("Không thể phát âm thanh.");
-    } finally {
-      setLoadingAudioId(null);
+    // Find the selected voice object
+    const selectedVoice = voices.find(v => v.voiceURI === ttsConfig.voiceURI);
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
     }
+
+    utterance.rate = ttsConfig.speed;
+    
+    utterance.onend = () => {
+      setActiveAudioId(null);
+    };
+    
+    utterance.onerror = (e) => {
+      console.error("Speech synthesis error", e);
+      setActiveAudioId(null);
+    };
+
+    setActiveAudioId(id);
+    window.speechSynthesis.speak(utterance);
   };
 
   const openPractice = (type: 'question' | 'answer' | 'sentence', text: string) => {
+    // Stop audio when opening practice to avoid interference
+    stopAudio();
     setPracticeType(type);
     setPracticeText(text);
     setPracticeModalOpen(true);
@@ -251,15 +182,18 @@ function App() {
         {/* Global Settings (Only show if result exists) */}
         {result && (
           <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col sm:flex-row items-center gap-4 justify-between">
-             <div className="flex items-center gap-2 w-full sm:w-auto">
-                <span className="text-sm font-medium text-gray-600 whitespace-nowrap">Giọng đọc:</span>
+             <div className="flex items-center gap-2 w-full sm:w-auto flex-1">
+                <span className="text-sm font-medium text-gray-600 whitespace-nowrap">Giọng đọc ({voices.length}):</span>
                 <select
-                  value={ttsConfig.voice}
-                  onChange={(e) => setTtsConfig({...ttsConfig, voice: e.target.value as VoiceName})}
+                  value={ttsConfig.voiceURI}
+                  onChange={(e) => setTtsConfig({...ttsConfig, voiceURI: e.target.value})}
                   className="w-full p-2 bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-lg"
                 >
-                  {Object.values(VoiceName).map((v) => (
-                    <option key={v} value={v}>{v}</option>
+                  {voices.length === 0 && <option>Đang tải giọng đọc...</option>}
+                  {voices.map((v) => (
+                    <option key={v.voiceURI} value={v.voiceURI}>
+                      {v.name} ({v.lang})
+                    </option>
                   ))}
                 </select>
              </div>
@@ -271,13 +205,7 @@ function App() {
                   max="2.0"
                   step="0.1"
                   value={ttsConfig.speed}
-                  onChange={(e) => {
-                    const newSpeed = parseFloat(e.target.value);
-                    setTtsConfig({...ttsConfig, speed: newSpeed});
-                    if (sourceNodeRef.current) {
-                        sourceNodeRef.current.playbackRate.value = newSpeed;
-                    }
-                  }}
+                  onChange={(e) => setTtsConfig({...ttsConfig, speed: parseFloat(e.target.value)})}
                   className="w-full h-2 bg-indigo-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                 />
              </div>
@@ -297,7 +225,6 @@ function App() {
                       {/* Play Full Button */}
                       <button
                         onClick={() => playAudio(result.english, 'full')}
-                        disabled={loadingAudioId !== null && loadingAudioId !== 'full'}
                         className={`p-3 rounded-full transition-all ${
                           activeAudioId === 'full' 
                           ? 'bg-orange-100 text-orange-600 animate-pulse' 
@@ -305,9 +232,7 @@ function App() {
                         }`}
                         title="Nghe toàn bộ"
                       >
-                         {loadingAudioId === 'full' ? (
-                           <div className="h-6 w-6"><Spinner /></div>
-                         ) : activeAudioId === 'full' ? (
+                         {activeAudioId === 'full' ? (
                            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
                          ) : (
                            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
@@ -347,16 +272,13 @@ function App() {
                        <div className="flex flex-row md:flex-col gap-2 shrink-0">
                           <button
                             onClick={() => playAudio(sentence.english, idx)}
-                            disabled={loadingAudioId !== null && loadingAudioId !== idx}
                             className={`p-2 rounded-lg transition-all flex items-center justify-center ${
                               activeAudioId === idx 
                               ? 'bg-orange-100 text-orange-600' 
                               : 'bg-gray-100 text-gray-600 hover:bg-indigo-50 hover:text-indigo-600'
                             }`}
                           >
-                            {loadingAudioId === idx ? (
-                               <div className="h-5 w-5"><Spinner /></div>
-                            ) : activeAudioId === idx ? (
+                            {activeAudioId === idx ? (
                                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
                             ) : (
                                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>

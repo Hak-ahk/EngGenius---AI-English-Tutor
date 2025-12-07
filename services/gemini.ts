@@ -1,13 +1,25 @@
-import { GoogleGenAI, Type, Modality } from "@google/genai";
-import { Difficulty, GeneratedResponse, VoiceName } from "../types";
+import { GoogleGenAI, Type } from "@google/genai";
+import { Difficulty, GeneratedResponse } from "../types";
 
-const apiKey = process.env.API_KEY || '';
+// NOTE: Hardcoded API Key for demo purposes based on user request.
+// In production, use environment variables or a backend proxy.
+const apiKey = 'PASTE_YOUR_API_KEY_HERE'; 
 const ai = new GoogleGenAI({ apiKey });
+
+// Helper to check key
+const checkApiKey = () => {
+    if (!apiKey || apiKey === 'PASTE_YOUR_API_KEY_HERE' || apiKey === '') {
+        return false;
+    }
+    return true;
+};
 
 export const generateAnswer = async (
   question: string,
   difficulty: Difficulty
 ): Promise<GeneratedResponse> => {
+  if (!checkApiKey()) throw new Error("Missing API Key");
+
   try {
     const model = "gemini-2.5-flash";
     const prompt = `
@@ -64,31 +76,9 @@ export const generateAnswer = async (
   }
 };
 
-export const generateSpeech = async (text: string, voice: VoiceName): Promise<string> => {
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text }] }],
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: voice },
-          },
-        },
-      },
-    });
-
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!base64Audio) throw new Error("No audio data returned");
-    return base64Audio;
-  } catch (error) {
-    console.error("Error generating speech:", error);
-    throw error;
-  }
-};
-
 export const checkPronunciation = async (audioBase64: string, targetText: string): Promise<string> => {
+  if (!checkApiKey()) return "Vui lòng cấu hình API Key trong file code.";
+
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",

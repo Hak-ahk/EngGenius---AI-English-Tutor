@@ -4,14 +4,6 @@ export enum Difficulty {
   ADVANCED = 'Advanced (Nâng cao)'
 }
 
-export enum VoiceName {
-  Puck = 'Puck',
-  Charon = 'Charon',
-  Kore = 'Kore',
-  Fenrir = 'Fenrir',
-  Zephyr = 'Zephyr'
-}
-
 export interface SentencePair {
   english: string;
   vietnamese: string;
@@ -24,6 +16,6 @@ export interface GeneratedResponse {
 }
 
 export interface TtsConfig {
-  voice: VoiceName;
+  voiceURI: string; // Changed to store the unique ID of the system voice
   speed: number;
 }
