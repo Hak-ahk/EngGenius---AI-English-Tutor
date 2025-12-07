@@ -1,0 +1,7 @@
+{
+  "name": "EngGenius - AI English Tutor",
+  "description": "An AI-powered application to generate English answers, translate them, and help users practice speaking with advanced TTS and feedback.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
