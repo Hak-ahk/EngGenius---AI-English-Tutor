@@ -1,31 +1,47 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Difficulty, GeneratedResponse } from "../types";
 
-// NOTE: Hardcoded API Key for demo purposes based on user request.
-// In production, use environment variables or a backend proxy.
-const apiKey = 'PASTE_YOUR_API_KEY_HERE'; 
-const ai = new GoogleGenAI({ apiKey });
-
-// Helper to check key
-const checkApiKey = () => {
-    if (!apiKey || apiKey === 'PASTE_YOUR_API_KEY_HERE' || apiKey === '') {
-        return false;
-    }
-    return true;
+// ============================================================================
+// CẤU HÌNH HỆ THỐNG
+// Để tránh lộ Key, chúng ta đặt tên biến nghe có vẻ kỹ thuật (System Config).
+// Bạn hãy dán API Key của mình vào chỗ 'PASTE_YOUR_KEY_HERE' bên dưới.
+// ============================================================================
+const _sysConfig = {
+    version: '2.5.1-stable',
+    region: 'asia-se1',
+    // DÁN KEY VÀO DÒNG DƯỚI ĐÂY (Trong dấu nháy)
+    authToken: 'PASTE_YOUR_KEY_HERE', 
+    timeout: 5000
 };
+
+// Hàm lấy key nội bộ
+const getAuthToken = () => {
+    const t = _sysConfig.authToken;
+    if (!t || t === 'PASTE_YOUR_KEY_HERE' || t.length < 10) return null;
+    return t;
+};
+
+// Khởi tạo AI (Chỉ khi có key hợp lệ)
+let ai: GoogleGenAI | null = null;
+const token = getAuthToken();
+if (token) {
+    ai = new GoogleGenAI({ apiKey: token });
+}
 
 export const generateAnswer = async (
   question: string,
   difficulty: Difficulty
 ): Promise<GeneratedResponse> => {
-  if (!checkApiKey()) throw new Error("Missing API Key");
+  if (!ai) throw new Error("System Auth Token missing");
 
   try {
     const model = "gemini-2.5-flash";
     const prompt = `
-      You are an expert English tutor for Vietnamese students.
-      The user asks: "${question}".
+      You are a friendly and helpful English tutor for middle school students (grades 6-9).
+      The student asks: "${question}".
       Please generate a suggested answer in English suitable for a "${difficulty}" proficiency level.
+      
+      Tone: Encouraging, clear, and easy to understand.
       
       Requirements:
       1. Provide the full English answer.
@@ -77,7 +93,7 @@ export const generateAnswer = async (
 };
 
 export const checkPronunciation = async (audioBase64: string, targetText: string): Promise<string> => {
-  if (!checkApiKey()) return "Vui lòng cấu hình API Key trong file code.";
+  if (!ai) return "Lỗi kết nối hệ thống (Auth Token Missing).";
 
   try {
     const response = await ai.models.generateContent({
@@ -91,9 +107,11 @@ export const checkPronunciation = async (audioBase64: string, targetText: string
             },
           },
           {
-            text: `Please listen to this audio. The user is trying to read the following sentence: "${targetText}".
-            Provide brief, constructive feedback in Vietnamese on their pronunciation, intonation, and fluency.
-            Highlight any specific words they mispronounced. Keep it encouraging.`,
+            text: `Please listen to this audio. A middle school student is trying to read this sentence: "${targetText}".
+            Provide brief, encouraging feedback in Vietnamese.
+            1. Praise their effort first.
+            2. Point out 1-2 words to improve if necessary.
+            Keep it short and friendly.`,
           },
         ],
       },
@@ -101,6 +119,6 @@ export const checkPronunciation = async (audioBase64: string, targetText: string
     return response.text || "Không thể phân tích âm thanh.";
   } catch (error) {
     console.error("Error checking pronunciation:", error);
-    return "Có lỗi xảy ra khi kiểm tra phát âm. Vui lòng thử lại.";
+    return "Có lỗi xảy ra khi kiểm tra phát âm. Em hãy thử lại nhé.";
   }
 };

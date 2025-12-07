@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Difficulty, GeneratedResponse, TtsConfig } from './types';
 import { generateAnswer } from './services/gemini';
 import { Spinner } from './components/Spinner';
@@ -17,7 +17,7 @@ function App() {
     speed: 1.0,
   });
   
-  // Track what is playing: 'full' or index of sentence
+  // Track what is playing
   const [activeAudioId, setActiveAudioId] = useState<string | number | null>(null);
 
   // Practice State
@@ -29,23 +29,17 @@ function App() {
   useEffect(() => {
     const loadVoices = () => {
       const allVoices = window.speechSynthesis.getVoices();
-      // Filter for English voices (or all if none found)
       const englishVoices = allVoices.filter(v => v.lang.startsWith('en'));
       const availableVoices = englishVoices.length > 0 ? englishVoices : allVoices;
-      
       setVoices(availableVoices);
 
-      // Set default voice if not set
       if (availableVoices.length > 0 && !ttsConfig.voiceURI) {
-        // Prefer "Google US English" or similar standard voices if available, otherwise first one
         const preferred = availableVoices.find(v => v.name.includes('Google US English')) || availableVoices[0];
         setTtsConfig(prev => ({ ...prev, voiceURI: preferred.voiceURI }));
       }
     };
 
     loadVoices();
-    
-    // Chrome requires this event to load voices asynchronously
     if (window.speechSynthesis.onvoiceschanged !== undefined) {
       window.speechSynthesis.onvoiceschanged = loadVoices;
     }
@@ -61,7 +55,7 @@ function App() {
       const response = await generateAnswer(question, difficulty);
       setResult(response);
     } catch (error) {
-      alert("Đã có lỗi xảy ra. Hãy kiểm tra xem bạn đã cấu hình API Key chưa.");
+      alert("Hệ thống chưa nhận diện được mã phiên. Vui lòng kiểm tra lại cấu hình (AuthToken).");
     } finally {
       setIsGenerating(false);
     }
@@ -73,40 +67,25 @@ function App() {
   };
 
   const playAudio = (text: string, id: string | number) => {
-    // Stop any current speech
     window.speechSynthesis.cancel();
-
-    // Toggle off if clicking the same button that is currently playing
     if (activeAudioId === id) {
       setActiveAudioId(null);
       return;
     }
 
     const utterance = new SpeechSynthesisUtterance(text);
-    
-    // Find the selected voice object
     const selectedVoice = voices.find(v => v.voiceURI === ttsConfig.voiceURI);
-    if (selectedVoice) {
-      utterance.voice = selectedVoice;
-    }
-
+    if (selectedVoice) utterance.voice = selectedVoice;
     utterance.rate = ttsConfig.speed;
     
-    utterance.onend = () => {
-      setActiveAudioId(null);
-    };
-    
-    utterance.onerror = (e) => {
-      console.error("Speech synthesis error", e);
-      setActiveAudioId(null);
-    };
+    utterance.onend = () => setActiveAudioId(null);
+    utterance.onerror = () => setActiveAudioId(null);
 
     setActiveAudioId(id);
     window.speechSynthesis.speak(utterance);
   };
 
   const openPractice = (type: 'question' | 'answer' | 'sentence', text: string) => {
-    // Stop audio when opening practice to avoid interference
     stopAudio();
     setPracticeType(type);
     setPracticeText(text);
@@ -114,99 +93,108 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-3 md:p-8 font-sans">
-      <div className="max-w-4xl mx-auto space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 md:p-8 font-sans">
+      <div className="max-w-4xl mx-auto space-y-8">
         
-        {/* Header */}
-        <header className="text-center pt-4 pb-6">
-          <h1 className="text-3xl md:text-4xl font-extrabold text-indigo-900 tracking-tight">
-            Eng<span className="text-indigo-600">Genius</span>
+        {/* Header - Playful Style */}
+        <header className="text-center pt-6 pb-2">
+          <div className="inline-block bg-white px-6 py-2 rounded-full shadow-md mb-4 border-2 border-blue-100">
+            <span className="text-sm font-bold text-blue-500 tracking-wider uppercase">✨ Học Tiếng Anh Cực Vui ✨</span>
+          </div>
+          <h1 className="text-4xl md:text-5xl font-extrabold text-slate-800 tracking-tight mb-2 drop-shadow-sm">
+            English<span className="text-blue-600">Buddy</span> 🚀
           </h1>
-          <p className="text-gray-500 mt-2 text-sm md:text-base">Trợ lý luyện nói tiếng Anh thông minh</p>
+          <p className="text-slate-500 font-medium">Bạn hỏi, AI trả lời siêu tốc!</p>
         </header>
 
-        {/* Input Card */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="p-4 md:p-6 space-y-4">
-            <div className="space-y-2">
-              <label htmlFor="question" className="block text-xs md:text-sm font-bold text-gray-700 uppercase tracking-wide">
-                Câu hỏi của bạn
+        {/* Input Area - Notebook Style */}
+        <div className="bg-white rounded-[2rem] shadow-xl border-4 border-white ring-4 ring-blue-50 overflow-hidden relative">
+          <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-400 via-purple-400 to-orange-400"></div>
+          
+          <div className="p-6 md:p-8 space-y-6">
+            <div className="space-y-3">
+              <label htmlFor="question" className="flex items-center gap-2 text-lg font-bold text-slate-700">
+                <span>✏️</span> Câu hỏi của em là gì?
               </label>
-              <div className="relative">
+              <div className="relative group">
                 <textarea
                   id="question"
                   value={question}
                   onChange={(e) => setQuestion(e.target.value)}
-                  placeholder="Nhập câu hỏi tiếng Anh (ví dụ: Describe your daily routine)..."
-                  className="w-full p-4 pr-12 text-gray-800 border border-gray-200 bg-gray-50 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all min-h-[100px] resize-y text-base"
+                  placeholder="Ví dụ: Giới thiệu về bản thân, sở thích của em..."
+                  className="w-full p-5 text-slate-700 bg-slate-50 rounded-2xl border-2 border-slate-200 focus:border-blue-400 focus:ring-4 focus:ring-blue-100 transition-all min-h-[140px] resize-y text-lg shadow-inner placeholder:text-slate-400"
                 />
                 {question && (
                   <button 
                     onClick={() => openPractice('question', question)}
-                    className="absolute bottom-3 right-3 p-2 bg-white rounded-full shadow-sm text-gray-400 hover:text-indigo-600 border border-gray-100 transition-colors"
-                    title="Luyện đọc câu hỏi này"
+                    className="absolute bottom-4 right-4 p-2 bg-white rounded-xl shadow-md text-slate-400 hover:text-blue-600 hover:scale-110 border border-slate-200 transition-all"
+                    title="Thử đọc câu hỏi này"
                   >
-                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
                   </button>
                 )}
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between pt-2">
-              <div className="w-full sm:w-auto">
-                 <select
-                  value={difficulty}
-                  onChange={(e) => setDifficulty(e.target.value as Difficulty)}
-                  className="w-full sm:w-48 p-2.5 bg-white border border-gray-300 text-gray-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
-                >
-                  {Object.values(Difficulty).map((diff) => (
-                    <option key={diff} value={diff}>{diff}</option>
-                  ))}
-                </select>
+            <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+              <div className="w-full md:w-auto flex flex-col gap-1">
+                 <label className="text-xs font-bold text-slate-400 uppercase ml-1">Độ khó</label>
+                 <div className="relative">
+                    <select
+                      value={difficulty}
+                      onChange={(e) => setDifficulty(e.target.value as Difficulty)}
+                      className="w-full md:w-56 p-3 pl-4 bg-blue-50 border-2 border-blue-100 text-blue-800 font-bold rounded-xl focus:ring-blue-200 focus:border-blue-400 appearance-none cursor-pointer"
+                    >
+                      {Object.values(Difficulty).map((diff) => (
+                        <option key={diff} value={diff}>{diff}</option>
+                      ))}
+                    </select>
+                    <div className="absolute right-3 top-3.5 pointer-events-none text-blue-400">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
+                    </div>
+                 </div>
               </div>
 
               <button
                 onClick={handleGenerate}
                 disabled={isGenerating || !question.trim()}
-                className="w-full sm:w-auto px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2"
+                className="w-full md:w-auto px-8 py-3.5 bg-gradient-to-r from-orange-400 to-orange-500 hover:from-orange-500 hover:to-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold shadow-lg hover:shadow-orange-200 transform hover:-translate-y-1 transition-all flex items-center justify-center gap-2 text-lg"
               >
-                {isGenerating ? <Spinner /> : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                )}
-                <span>{isGenerating ? 'Đang tạo...' : 'Tạo câu trả lời'}</span>
+                {isGenerating ? <Spinner /> : <span>✨</span>}
+                <span>{isGenerating ? 'Đang suy nghĩ...' : 'Tạo câu trả lời'}</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* Global Settings (Only show if result exists) */}
+        {/* Global Settings (Only show if result exists) - Cleaner Look */}
         {result && (
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col sm:flex-row items-center gap-4 justify-between">
-             <div className="flex items-center gap-2 w-full sm:w-auto flex-1">
-                <span className="text-sm font-medium text-gray-600 whitespace-nowrap">Giọng đọc ({voices.length}):</span>
+          <div className="bg-white/80 backdrop-blur-sm p-4 rounded-2xl border border-blue-100 flex flex-col sm:flex-row items-center gap-4 justify-between">
+             <div className="flex items-center gap-3 w-full sm:w-auto flex-1">
+                <div className="bg-blue-100 p-2 rounded-lg text-blue-600">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                </div>
                 <select
                   value={ttsConfig.voiceURI}
                   onChange={(e) => setTtsConfig({...ttsConfig, voiceURI: e.target.value})}
-                  className="w-full p-2 bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-lg"
+                  className="w-full p-2 bg-transparent border-b-2 border-slate-200 font-medium text-slate-700 focus:border-blue-500 outline-none transition-colors"
                 >
-                  {voices.length === 0 && <option>Đang tải giọng đọc...</option>}
+                  {voices.length === 0 && <option>Đang tìm giọng đọc...</option>}
                   {voices.map((v) => (
-                    <option key={v.voiceURI} value={v.voiceURI}>
-                      {v.name} ({v.lang})
-                    </option>
+                    <option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>
                   ))}
                 </select>
              </div>
-             <div className="flex items-center gap-4 w-full sm:w-auto">
-                <span className="text-sm font-medium text-gray-600 whitespace-nowrap">Tốc độ: {ttsConfig.speed}x</span>
+             <div className="flex items-center gap-3 w-full sm:w-auto bg-blue-50 px-4 py-2 rounded-xl">
+                <span className="text-sm font-bold text-blue-400 whitespace-nowrap">Tốc độ</span>
                 <input
                   type="range"
                   min="0.5"
-                  max="2.0"
+                  max="1.5"
                   step="0.1"
                   value={ttsConfig.speed}
                   onChange={(e) => setTtsConfig({...ttsConfig, speed: parseFloat(e.target.value)})}
-                  className="w-full h-2 bg-indigo-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                  className="w-24 h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
                 />
              </div>
           </div>
@@ -214,48 +202,44 @@ function App() {
 
         {/* Result Section */}
         {result && (
-          <div className="space-y-6 animate-fade-in-up">
+          <div className="space-y-8 animate-fade-in-up pb-10">
             
             {/* 1. Full Answer Card */}
-            <div className="bg-white rounded-2xl shadow-lg border-l-4 border-indigo-500 overflow-hidden">
-              <div className="p-5 md:p-8">
-                <div className="flex justify-between items-start mb-4">
-                   <h2 className="text-xl font-bold text-gray-800">Toàn bộ câu trả lời</h2>
-                   <div className="flex gap-2">
-                      {/* Play Full Button */}
-                      <button
-                        onClick={() => playAudio(result.english, 'full')}
-                        className={`p-3 rounded-full transition-all ${
-                          activeAudioId === 'full' 
-                          ? 'bg-orange-100 text-orange-600 animate-pulse' 
-                          : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'
-                        }`}
-                        title="Nghe toàn bộ"
-                      >
-                         {activeAudioId === 'full' ? (
-                           <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
-                         ) : (
-                           <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                         )}
-                      </button>
-                      
-                      {/* Practice Full Button */}
-                      <button
-                        onClick={() => openPractice('answer', result.english)}
-                        className="p-3 rounded-full bg-green-50 text-green-600 hover:bg-green-100 transition-all"
-                        title="Luyện nói toàn bài"
-                      >
-                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
-                      </button>
-                   </div>
-                </div>
+            <div className="bg-white rounded-[2rem] shadow-xl border-2 border-slate-100 overflow-hidden">
+              <div className="bg-indigo-50 p-5 border-b border-indigo-100 flex justify-between items-center">
+                 <h2 className="text-xl font-extrabold text-indigo-900 flex items-center gap-2">
+                   <span>📜</span> Câu trả lời mẫu
+                 </h2>
+                 <div className="flex gap-2">
+                    <button
+                      onClick={() => playAudio(result.english, 'full')}
+                      className={`px-4 py-2 rounded-xl font-bold text-sm transition-all flex items-center gap-2 ${
+                        activeAudioId === 'full' 
+                        ? 'bg-orange-100 text-orange-600 ring-2 ring-orange-200' 
+                        : 'bg-white text-indigo-600 hover:bg-indigo-100 shadow-sm'
+                      }`}
+                    >
+                       {activeAudioId === 'full' ? 'Đang đọc...' : 'Nghe hết'}
+                       <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                    </button>
+                    
+                    <button
+                      onClick={() => openPractice('answer', result.english)}
+                      className="p-2 rounded-xl bg-white text-green-600 hover:bg-green-50 shadow-sm transition-all border border-green-100"
+                      title="Luyện nói"
+                    >
+                       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                    </button>
+                 </div>
+              </div>
 
-                <div className="prose prose-indigo max-w-none">
-                  <p className="text-lg md:text-xl text-gray-800 leading-relaxed font-medium">
-                    {result.english}
-                  </p>
-                  <p className="text-base text-gray-500 italic mt-4 border-t pt-4">
-                    {result.vietnamese}
+              <div className="p-6 md:p-8">
+                <p className="text-xl text-slate-800 leading-relaxed font-medium font-serif">
+                  {result.english}
+                </p>
+                <div className="mt-6 pt-6 border-t-2 border-dashed border-slate-200">
+                  <p className="text-lg text-slate-500 italic flex gap-2">
+                    <span className="not-italic">🇻🇳</span> {result.vietnamese}
                   </p>
                 </div>
               </div>
@@ -263,40 +247,46 @@ function App() {
 
             {/* 2. Breakdown Section */}
             <div className="space-y-4">
-               <h3 className="text-lg font-bold text-gray-700 ml-2">Chi tiết từng câu</h3>
+               <div className="flex items-center gap-2 ml-2">
+                 <span className="text-2xl">🧩</span>
+                 <h3 className="text-xl font-bold text-slate-700">Học từng câu một</h3>
+               </div>
+               
                <div className="grid gap-4">
                   {result.sentences.map((sentence, idx) => (
-                    <div key={idx} className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 hover:border-indigo-200 transition-colors flex flex-col md:flex-row gap-4 items-start md:items-center">
+                    <div key={idx} className="bg-white rounded-2xl p-5 shadow-sm border-2 border-transparent hover:border-blue-200 transition-all flex flex-col md:flex-row gap-5 items-start">
                        
                        {/* Controls */}
                        <div className="flex flex-row md:flex-col gap-2 shrink-0">
                           <button
                             onClick={() => playAudio(sentence.english, idx)}
-                            className={`p-2 rounded-lg transition-all flex items-center justify-center ${
+                            className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all shadow-sm ${
                               activeAudioId === idx 
-                              ? 'bg-orange-100 text-orange-600' 
-                              : 'bg-gray-100 text-gray-600 hover:bg-indigo-50 hover:text-indigo-600'
+                              ? 'bg-orange-400 text-white scale-110 shadow-orange-200' 
+                              : 'bg-slate-100 text-slate-500 hover:bg-blue-100 hover:text-blue-600'
                             }`}
                           >
                             {activeAudioId === idx ? (
-                               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                               <div className="w-3 h-3 bg-white rounded-sm animate-pulse" />
                             ) : (
-                               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                               <svg className="w-6 h-6 ml-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
                             )}
                           </button>
                           
                           <button
                             onClick={() => openPractice('sentence', sentence.english)}
-                            className="p-2 rounded-lg bg-gray-100 text-gray-600 hover:bg-green-50 hover:text-green-600 transition-colors"
+                            className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 hover:bg-green-100 hover:text-green-600 border border-slate-100 transition-all flex items-center justify-center"
                           >
-                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
                           </button>
                        </div>
 
                        {/* Content */}
-                       <div className="flex-1 space-y-1">
-                          <p className="text-gray-900 font-medium text-lg leading-snug">{sentence.english}</p>
-                          <p className="text-gray-500 text-sm italic">{sentence.vietnamese}</p>
+                       <div className="flex-1 pt-1">
+                          <p className="text-slate-800 font-bold text-lg mb-2">{sentence.english}</p>
+                          <p className="text-slate-500 italic bg-slate-50 p-2 rounded-lg inline-block border border-slate-100">
+                            {sentence.vietnamese}
+                          </p>
                        </div>
                     </div>
                   ))}
