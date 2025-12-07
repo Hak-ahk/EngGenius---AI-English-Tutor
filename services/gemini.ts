@@ -10,7 +10,7 @@ const _sysConfig = {
     version: '2.5.1-stable',
     region: 'asia-se1',
     // DÁN KEY VÀO DÒNG DƯỚI ĐÂY (Trong dấu nháy)
-    authToken: 'PASTE_YOUR_KEY_HERE', 
+    authToken: 'AIzaSyAd_7B-Ve2YpbP3kbgpB3AzbHYCAvaxAxw', 
     timeout: 5000
 };
 
