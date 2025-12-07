@@ -3,278 +3,133 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>EngGenius</title>
+    <title>EngGenius - Học Tiếng Anh cùng AI</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Babel for in-browser JSX compilation -->
+    
+    <!-- React Dependencies -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <style>
-      body {
-        font-family: 'Inter', sans-serif;
-        background-color: #f3f4f6;
-      }
-      ::-webkit-scrollbar {
-        width: 8px;
-      }
-      ::-webkit-scrollbar-track {
-        background: #f1f1f1;
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #cbd5e1;
-        border-radius: 4px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #94a3b8;
-      }
-      @keyframes fade-in {
-        from { opacity: 0; }
-        to { opacity: 1; }
-      }
-      .animate-fade-in {
-        animation: fade-in 0.3s ease-out;
-      }
-      @keyframes fade-in-up {
-        from { opacity: 0; transform: translateY(20px); }
-        to { opacity: 1; transform: translateY(0); }
-      }
-      .animate-fade-in-up {
-        animation: fade-in-up 0.5s ease-out;
-      }
-    </style>
-  <script type="importmap">
+    
+    <!-- Google GenAI SDK -->
+    <script type="importmap">
 {
   "imports": {
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
-    "react-dom/client": "https://aistudiocdn.com/react-dom@^19.2.1/client",
+    "@google/genai": "https://esm.run/@google/genai",
     "react": "https://aistudiocdn.com/react@^19.2.1",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
     "react/": "https://aistudiocdn.com/react@^19.2.1/"
   }
 }
 </script>
-</head>
+
+    <style>
+      body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+      .animate-fade-in-up { animation: fadeInUp 0.5s ease-out; }
+      @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+      .spinner { border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; border-top: 3px solid white; width: 20px; height: 20px; animation: spin 1s linear infinite; }
+      @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar { width: 8px; }
+      ::-webkit-scrollbar-track { background: #f1f1f1; }
+      ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+  </head>
   <body>
     <div id="root"></div>
 
-    <script type="text/babel" data-type="module" data-presets="typescript,react">
-      import React, { useState, useRef, useEffect } from 'react';
-      import ReactDOM from 'react-dom/client';
-      import { GoogleGenAI, Type, Modality } from "@google/genai";
+    <script type="text/babel" data-type="module">
+      import { GoogleGenAI } from "@google/genai";
+      
+      const { useState, useEffect, useRef } = React;
 
-      // --- TYPES ---
+      // =========================================================================================
+      // CẤU HÌNH API KEY (DÀNH CHO CHỦ APP)
+      // Dán API Key của bạn vào giữa hai dấu nháy đơn bên dưới.
+      // Người chơi sẽ KHÔNG cần nhập key nữa.
+      // =========================================================================================
+      const API_KEY = 'PASTE_YOUR_API_KEY_HERE'; 
+      // Ví dụ: const API_KEY = 'AIzaSyD...';
+
+      // --- CONFIG ---
       const Difficulty = {
         EASY: 'Easy (Dễ)',
         MEDIUM: 'Medium (Trung bình)',
         ADVANCED: 'Advanced (Nâng cao)'
       };
 
-      const VoiceName = {
-        Puck: 'Puck',
-        Charon: 'Charon',
-        Kore: 'Kore',
-        Fenrir: 'Fenrir',
-        Zephyr: 'Zephyr'
-      };
-
-      // --- UTILS ---
-      function decodeBase64(base64) {
-        const binaryString = atob(base64);
-        const len = binaryString.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        return bytes;
-      }
-
-      async function decodeAudioData(data, ctx, sampleRate = 24000, numChannels = 1) {
-        const dataInt16 = new Int16Array(data.buffer);
-        const frameCount = dataInt16.length / numChannels;
-        const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
-
-        for (let channel = 0; channel < numChannels; channel++) {
-          const channelData = buffer.getChannelData(channel);
-          for (let i = 0; i < frameCount; i++) {
-            channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
-          }
-        }
-        return buffer;
-      }
-
-      function blobToBase64(blob) {
+      // --- HELPERS ---
+      const blobToBase64 = (blob) => {
         return new Promise((resolve, reject) => {
           const reader = new FileReader();
-          reader.onloadend = () => {
-            const result = reader.result;
-            const base64 = result.split(',')[1];
-            resolve(base64);
-          };
+          reader.onloadend = () => resolve(reader.result.split(',')[1]);
           reader.onerror = reject;
           reader.readAsDataURL(blob);
         });
-      }
+      };
 
       // --- SERVICES ---
-      
-      // =========================================================================================
-      // CẤU HÌNH API KEY (QUAN TRỌNG CHO GITHUB PAGES)
-      // Để App chạy được trên GitHub Pages, bạn phải dán Key của mình vào bên dưới.
-      // Thay thế dòng chữ 'PASTE_YOUR_API_KEY_HERE' bằng API Key thật của bạn.
-      // =========================================================================================
-      const apiKey = 'AIzaSyAd_7B-Ve2YpbP3kbgpB3AzbHYCAvaxAxw'; 
-      // Ví dụ: const apiKey = 'AIzaSyA....';
-      
-      const ai = new GoogleGenAI({ apiKey });
-
-      // Hàm kiểm tra xem người dùng đã điền key chưa
-      const checkApiKey = () => {
-         if (!apiKey || apiKey === 'PASTE_YOUR_API_KEY_HERE' || apiKey === '') {
-             alert("⚠️ LỖI CẤU HÌNH:\n\nBạn chưa điền API Key vào file index.html.\n\nCách sửa: Mở file index.html, tìm dòng 'const apiKey' và dán key của bạn vào đó.");
-             return false;
-         }
-         return true;
-      };
+      const ai = new GoogleGenAI({ apiKey: API_KEY });
 
       const generateAnswer = async (question, difficulty) => {
-        if (!checkApiKey()) throw new Error("Missing API Key");
-        
-        try {
-          const model = "gemini-2.5-flash";
-          const prompt = `
-            You are an expert English tutor for Vietnamese students.
-            The user asks: "${question}".
-            Please generate a suggested answer in English suitable for a "${difficulty}" proficiency level.
-            
-            Requirements:
-            1. Provide the full English answer.
-            2. Provide a natural Vietnamese translation for the full answer.
-            3. Break down the answer into individual sentences, providing the English text and Vietnamese translation for each sentence.
-          `;
-
-          const response = await ai.models.generateContent({
-            model,
-            contents: prompt,
-            config: {
-              responseMimeType: "application/json",
-              responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                  english: {
-                    type: Type.STRING,
-                    description: "The full suggested answer in English",
-                  },
-                  vietnamese: {
-                    type: Type.STRING,
-                    description: "The full Vietnamese translation of the answer",
-                  },
-                  sentences: {
-                    type: Type.ARRAY,
-                    description: "List of individual sentences with translations",
-                    items: {
-                      type: Type.OBJECT,
-                      properties: {
-                        english: { type: Type.STRING },
-                        vietnamese: { type: Type.STRING }
-                      },
-                      required: ["english", "vietnamese"]
-                    }
-                  }
-                },
-                required: ["english", "vietnamese", "sentences"],
-              },
-            },
-          });
-
-          const text = response.text;
-          if (!text) throw new Error("No response generated");
-          return JSON.parse(text);
-        } catch (error) {
-          console.error("Error generating answer:", error);
-          throw error;
+        if (!API_KEY || API_KEY === 'PASTE_YOUR_API_KEY_HERE') {
+            alert("⚠️ LỖI: Chủ App chưa cấu hình API Key trong code!");
+            throw new Error("Missing Key");
         }
-      };
 
-      const generateSpeech = async (text, voice) => {
-        if (!checkApiKey()) throw new Error("Missing API Key");
+        const model = "gemini-2.5-flash";
+        const prompt = `
+          You are an expert English tutor.
+          User asks: "${question}".
+          Generate an answer in English (Level: ${difficulty}).
+          
+          Return JSON format:
+          {
+            "english": "Full English answer",
+            "vietnamese": "Vietnamese translation of full answer",
+            "sentences": [
+              { "english": "Sentence 1", "vietnamese": "Translation 1" },
+              { "english": "Sentence 2", "vietnamese": "Translation 2" }
+            ]
+          }
+        `;
 
-        try {
-          const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash-preview-tts",
-            contents: [{ parts: [{ text }] }],
-            config: {
-              responseModalities: [Modality.AUDIO],
-              speechConfig: {
-                voiceConfig: {
-                  prebuiltVoiceConfig: { voiceName: voice },
-                },
-              },
-            },
-          });
+        const response = await ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: { responseMimeType: "application/json" }
+        });
 
-          const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-          if (!base64Audio) throw new Error("No audio data returned");
-          return base64Audio;
-        } catch (error) {
-          console.error("Error generating speech:", error);
-          throw error;
-        }
+        return JSON.parse(response.text);
       };
 
       const checkPronunciation = async (audioBase64, targetText) => {
-        if (!checkApiKey()) return "Vui lòng cấu hình API Key trong file code.";
+        if (!API_KEY || API_KEY === 'PASTE_YOUR_API_KEY_HERE') return "Lỗi: Chưa có API Key.";
 
-        try {
-          const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: {
-              parts: [
-                {
-                  inlineData: {
-                    mimeType: "audio/wav", 
-                    data: audioBase64,
-                  },
-                },
-                {
-                  text: `Please listen to this audio. The user is trying to read the following sentence: "${targetText}".
-                  Provide brief, constructive feedback in Vietnamese on their pronunciation, intonation, and fluency.
-                  Highlight any specific words they mispronounced. Keep it encouraging.`,
-                },
-              ],
-            },
-          });
-          return response.text || "Không thể phân tích âm thanh.";
-        } catch (error) {
-          console.error("Error checking pronunciation:", error);
-          return "Có lỗi xảy ra khi kiểm tra phát âm. Vui lòng thử lại.";
-        }
+        const response = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: {
+            parts: [
+              { inlineData: { mimeType: "audio/wav", data: audioBase64 } },
+              { text: `Listen to this audio. User is reading: "${targetText}". Give brief feedback in Vietnamese about pronunciation/fluency.` }
+            ]
+          }
+        });
+        return response.text;
       };
 
       // --- COMPONENTS ---
-      const Spinner = () => (
-        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
-      );
 
+      // 1. Practice Modal (Recording)
       const PracticeModal = ({ isOpen, onClose, targetText, type }) => {
-        const [isRecording, setIsRecording] = useState(false);
-        const [feedback, setFeedback] = useState(null);
-        const [isAnalyzing, setIsAnalyzing] = useState(false);
-        
+        const [status, setStatus] = useState('idle'); // idle, recording, analyzing, done
+        const [feedback, setFeedback] = useState('');
         const mediaRecorderRef = useRef(null);
         const chunksRef = useRef([]);
 
         if (!isOpen) return null;
-
-        const getTitle = () => {
-          switch (type) {
-            case 'question': return 'Luyện tập Câu hỏi';
-            case 'answer': return 'Luyện tập Toàn bộ câu trả lời';
-            case 'sentence': return 'Luyện tập Câu (Từng câu)';
-            default: return 'Luyện tập';
-          }
-        };
 
         const startRecording = async () => {
           try {
@@ -283,480 +138,285 @@
             mediaRecorderRef.current = mediaRecorder;
             chunksRef.current = [];
 
-            mediaRecorder.ondataavailable = (e) => {
-              if (e.data.size > 0) {
-                chunksRef.current.push(e.data);
-              }
-            };
-
+            mediaRecorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
             mediaRecorder.onstop = async () => {
-              const audioBlob = new Blob(chunksRef.current, { type: 'audio/wav' });
-              setIsAnalyzing(true);
+              setStatus('analyzing');
+              const blob = new Blob(chunksRef.current, { type: 'audio/wav' });
               try {
-                const base64 = await blobToBase64(audioBlob);
+                const base64 = await blobToBase64(blob);
                 const result = await checkPronunciation(base64, targetText);
                 setFeedback(result);
-              } catch (err) {
-                setFeedback("Lỗi khi phân tích âm thanh.");
-              } finally {
-                setIsAnalyzing(false);
+                setStatus('done');
+              } catch (e) {
+                setFeedback("Lỗi: " + e.message);
+                setStatus('done');
               }
-              stream.getTracks().forEach(track => track.stop());
+              stream.getTracks().forEach(t => t.stop());
             };
 
             mediaRecorder.start();
-            setIsRecording(true);
-            setFeedback(null);
+            setStatus('recording');
           } catch (err) {
-            console.error("Microphone access denied:", err);
-            setFeedback("Không thể truy cập microphone. Vui lòng kiểm tra quyền truy cập.");
+            alert("Không thể truy cập Microphone. Hãy kiểm tra quyền truy cập trình duyệt.");
           }
         };
 
         const stopRecording = () => {
-          if (mediaRecorderRef.current && isRecording) {
-            mediaRecorderRef.current.stop();
-            setIsRecording(false);
-          }
+          if (mediaRecorderRef.current) mediaRecorderRef.current.stop();
         };
 
         return (
-          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 animate-fade-in flex flex-col max-h-[90vh]">
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 animate-fade-in-up max-h-[90vh] flex flex-col">
               <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-xl font-bold text-gray-800">
-                  {getTitle()}
-                  </h3>
-                  <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                  </button>
+                <h3 className="font-bold text-lg text-gray-800">Luyện nói</h3>
+                <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
               </div>
               
-              <div className="overflow-y-auto mb-6 flex-1">
-                  <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
-                      <p className="text-lg text-indigo-900 font-medium italic">{targetText}</p>
+              <div className="overflow-y-auto flex-1">
+                <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100 mb-6">
+                  <p className="text-indigo-900 font-medium text-lg leading-snug">{targetText}</p>
+                </div>
+
+                <div className="flex justify-center mb-6">
+                   {status === 'analyzing' ? (
+                     <div className="flex flex-col items-center text-indigo-600">
+                        <div className="spinner border-indigo-600 border-t-transparent mb-2"></div>
+                        <span>AI đang nghe...</span>
+                     </div>
+                   ) : (
+                     <button 
+                      onClick={status === 'recording' ? stopRecording : startRecording}
+                      className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${status === 'recording' ? 'bg-red-500 scale-110 shadow-red-200 shadow-xl' : 'bg-indigo-600 hover:bg-indigo-700 shadow-lg'}`}
+                     >
+                        {status === 'recording' ? (
+                          <div className="w-8 h-8 bg-white rounded animate-pulse"></div>
+                        ) : (
+                          <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                        )}
+                     </button>
+                   )}
+                </div>
+                
+                <p className="text-center text-sm text-gray-500 mb-4">
+                    {status === 'recording' ? "Đang ghi âm... Bấm để dừng" : status === 'analyzing' ? "" : "Bấm micro để đọc câu trên"}
+                </p>
+
+                {feedback && (
+                  <div className="bg-green-50 p-4 rounded-lg border border-green-200 text-sm text-gray-800 animate-fade-in-up">
+                    <strong className="text-green-800 block mb-1">Đánh giá:</strong>
+                    {feedback}
                   </div>
-              
-                  <div className="flex flex-col items-center justify-center space-y-4 mt-6">
-                  {!isAnalyzing && (
-                      <button
-                      onClick={isRecording ? stopRecording : startRecording}
-                      className={`h-20 w-20 rounded-full flex items-center justify-center transition-all duration-300 ${
-                          isRecording 
-                          ? 'bg-red-500 hover:bg-red-600 shadow-[0_0_20px_rgba(239,68,68,0.5)] scale-110' 
-                          : 'bg-indigo-600 hover:bg-indigo-700 shadow-lg'
-                      }`}
-                      >
-                      {isRecording ? (
-                          <div className="h-8 w-8 bg-white rounded-sm" />
-                      ) : (
-                          <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                          </svg>
-                      )}
-                      </button>
-                  )}
-
-                  {isAnalyzing && (
-                      <div className="flex flex-col items-center text-indigo-600">
-                      <Spinner />
-                      <span className="mt-2 text-sm font-medium">Đang phân tích phát âm...</span>
-                      </div>
-                  )}
-
-                  <p className="text-gray-500 text-sm">
-                      {isRecording ? "Đang ghi âm... Nhấn để dừng." : isAnalyzing ? "" : "Nhấn vào micro để bắt đầu đọc"}
-                  </p>
-                  </div>
-
-                  {feedback && (
-                  <div className="mt-6 p-4 bg-green-50 rounded-lg border border-green-200">
-                      <h4 className="font-semibold text-green-800 mb-2">Đánh giá từ AI:</h4>
-                      <p className="text-gray-700 text-sm leading-relaxed">{feedback}</p>
-                  </div>
-                  )}
-              </div>
-
-              <div className="pt-2 border-t border-gray-100 flex justify-end">
-                <button
-                  onClick={onClose}
-                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors text-sm font-medium"
-                >
-                  Đóng
-                </button>
+                )}
               </div>
             </div>
           </div>
         );
       };
 
-      // --- APP ---
-      function App() {
+      // --- MAIN APP ---
+      const App = () => {
         const [question, setQuestion] = useState('');
         const [difficulty, setDifficulty] = useState(Difficulty.MEDIUM);
         const [result, setResult] = useState(null);
-        const [isGenerating, setIsGenerating] = useState(false);
+        const [loading, setLoading] = useState(false);
         
-        const [ttsConfig, setTtsConfig] = useState({
-          voice: VoiceName.Puck,
-          speed: 1.0,
-        });
-        
-        const [activeAudioId, setActiveAudioId] = useState(null);
-        const [loadingAudioId, setLoadingAudioId] = useState(null);
-        
-        const audioContextRef = useRef(null);
-        const sourceNodeRef = useRef(null);
-        
-        const audioCacheRef = useRef(new Map());
-        const pendingRequestsRef = useRef(new Map());
+        // TTS State
+        const [voices, setVoices] = useState([]);
+        const [ttsConfig, setTtsConfig] = useState({ voiceURI: '', speed: 1.0 });
+        const [speakingId, setSpeakingId] = useState(null);
 
-        const [practiceModalOpen, setPracticeModalOpen] = useState(false);
-        const [practiceType, setPracticeType] = useState('question');
-        const [practiceText, setPracticeText] = useState('');
+        // Practice State
+        const [practiceData, setPracticeData] = useState({ isOpen: false, text: '', type: 'question' });
 
-        const getAudioContext = () => {
-          if (!audioContextRef.current) {
-            audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-          }
-          return audioContextRef.current;
-        };
-
-        const fetchAudioBuffer = async (text, voice) => {
-          const cacheKey = `${voice}:${text}`;
-          
-          if (audioCacheRef.current.has(cacheKey)) {
-            return audioCacheRef.current.get(cacheKey);
-          }
-
-          if (pendingRequestsRef.current.has(cacheKey)) {
-            return pendingRequestsRef.current.get(cacheKey);
-          }
-
-          const fetchPromise = (async () => {
-              try {
-                  const base64Audio = await generateSpeech(text, voice);
-                  const rawBytes = decodeBase64(base64Audio);
-                  
-                  const ctx = getAudioContext();
-                  if (ctx.state === 'suspended') {
-                    // Do not await resume here to allow background preloading
-                  }
-                  const audioBuffer = await decodeAudioData(rawBytes, ctx, 24000);
-                  
-                  audioCacheRef.current.set(cacheKey, audioBuffer);
-                  return audioBuffer;
-              } finally {
-                  pendingRequestsRef.current.delete(cacheKey);
-              }
-          })();
-
-          pendingRequestsRef.current.set(cacheKey, fetchPromise);
-          return fetchPromise;
-        };
-
+        // Load Voices on Mount
         useEffect(() => {
-          if (result?.english) {
-            const voice = ttsConfig.voice;
+          const loadVoices = () => {
+            const all = window.speechSynthesis.getVoices();
+            const en = all.filter(v => v.lang.startsWith('en')); // Prefer English
+            const list = en.length > 0 ? en : all;
+            setVoices(list);
             
-            // 1. Preload Full Answer
-            fetchAudioBuffer(result.english, voice)
-              .catch(err => console.debug('Preload full failed (ignorable)', err));
-
-            // 2. Preload ALL Sentences concurrently
-            if (result.sentences) {
-              result.sentences.forEach(sentence => {
-                 fetchAudioBuffer(sentence.english, voice)
-                   .catch(err => console.debug('Preload sentence failed (ignorable)', err));
-              });
+            // Auto select a good voice
+            if (list.length > 0 && !ttsConfig.voiceURI) {
+              const pref = list.find(v => v.name.includes('Google US')) || list[0];
+              setTtsConfig(prev => ({ ...prev, voiceURI: pref.voiceURI }));
             }
-          }
-        }, [result, ttsConfig.voice]);
+          };
+          loadVoices();
+          window.speechSynthesis.onvoiceschanged = loadVoices;
+        }, []);
 
         const handleGenerate = async () => {
-          if (!question.trim()) return;
-          setIsGenerating(true);
-          setResult(null);
-          stopAudio();
-          
-          audioCacheRef.current.clear();
-          pendingRequestsRef.current.clear();
-
-          // Warm up AudioContext
-          getAudioContext();
-
+          setLoading(true);
+          window.speechSynthesis.cancel(); // Stop speaking
           try {
-            const response = await generateAnswer(question, difficulty);
-            setResult(response);
-          } catch (error) {
-            alert("Đã có lỗi xảy ra. Hãy kiểm tra xem bạn đã dán API Key vào file index.html chưa.");
+            const res = await generateAnswer(question, difficulty);
+            setResult(res);
+          } catch (err) {
+            console.error(err);
           } finally {
-            setIsGenerating(false);
+            setLoading(false);
           }
         };
 
-        const stopAudio = () => {
-          if (sourceNodeRef.current) {
-            sourceNodeRef.current.stop();
-            sourceNodeRef.current = null;
-          }
-          setActiveAudioId(null);
-        };
-
-        const playAudio = async (text, id) => {
-          if (activeAudioId === id) {
-            stopAudio();
+        const speak = (text, id) => {
+          window.speechSynthesis.cancel();
+          if (speakingId === id) {
+            setSpeakingId(null);
             return;
           }
-          
-          stopAudio();
-          setLoadingAudioId(id);
-
-          try {
-            const audioBuffer = await fetchAudioBuffer(text, ttsConfig.voice);
-
-            const ctx = getAudioContext();
-            if (ctx.state === 'suspended') {
-              await ctx.resume();
-            }
-
-            const source = ctx.createBufferSource();
-            source.buffer = audioBuffer;
-            source.playbackRate.value = ttsConfig.speed;
-            
-            source.connect(ctx.destination);
-            
-            source.onended = () => {
-              setActiveAudioId(null);
-            };
-            
-            sourceNodeRef.current = source;
-            source.start();
-            setActiveAudioId(id);
-          } catch (error) {
-            console.error(error);
-            alert("Không thể phát âm thanh.");
-          } finally {
-            setLoadingAudioId(null);
-          }
-        };
-
-        const openPractice = (type, text) => {
-          setPracticeType(type);
-          setPracticeText(text);
-          setPracticeModalOpen(true);
+          const u = new SpeechSynthesisUtterance(text);
+          const v = voices.find(vo => vo.voiceURI === ttsConfig.voiceURI);
+          if (v) u.voice = v;
+          u.rate = ttsConfig.speed;
+          u.onend = () => setSpeakingId(null);
+          setSpeakingId(id);
+          window.speechSynthesis.speak(u);
         };
 
         return (
-          <div className="min-h-screen bg-gray-50 p-3 md:p-8 font-sans">
+          <div className="min-h-screen p-4 md:p-8">
+            
+            <header className="text-center mb-8 pt-4">
+              <h1 className="text-4xl font-extrabold text-indigo-900 tracking-tight">Eng<span className="text-indigo-600">Genius</span></h1>
+              <p className="text-gray-500 mt-2">Trợ lý học Tiếng Anh thông minh</p>
+            </header>
+
             <div className="max-w-4xl mx-auto space-y-6">
               
-              <header className="text-center pt-4 pb-6">
-                <h1 className="text-3xl md:text-4xl font-extrabold text-indigo-900 tracking-tight">
-                  Eng<span className="text-indigo-600">Genius</span>
-                </h1>
-                <p className="text-gray-500 mt-2 text-sm md:text-base">Trợ lý luyện nói tiếng Anh thông minh</p>
-              </header>
-
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="p-4 md:p-6 space-y-4">
-                  <div className="space-y-2">
-                    <label htmlFor="question" className="block text-xs md:text-sm font-bold text-gray-700 uppercase tracking-wide">
-                      Câu hỏi của bạn
-                    </label>
-                    <div className="relative">
-                      <textarea
-                        id="question"
-                        value={question}
-                        onChange={(e) => setQuestion(e.target.value)}
-                        placeholder="Nhập câu hỏi tiếng Anh (ví dụ: Describe your daily routine)..."
-                        className="w-full p-4 pr-12 text-gray-800 border border-gray-200 bg-gray-50 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all min-h-[100px] resize-y text-base"
-                      />
-                      {question && (
-                        <button 
-                          onClick={() => openPractice('question', question)}
-                          className="absolute bottom-3 right-3 p-2 bg-white rounded-full shadow-sm text-gray-400 hover:text-indigo-600 border border-gray-100 transition-colors"
-                          title="Luyện đọc câu hỏi này"
-                        >
-                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row gap-3 items-center justify-between pt-2">
-                    <div className="w-full sm:w-auto">
-                       <select
-                        value={difficulty}
-                        onChange={(e) => setDifficulty(e.target.value)}
-                        className="w-full sm:w-48 p-2.5 bg-white border border-gray-300 text-gray-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
-                      >
-                        {Object.values(Difficulty).map((diff) => (
-                          <option key={diff} value={diff}>{diff}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <button
-                      onClick={handleGenerate}
-                      disabled={isGenerating || !question.trim()}
-                      className="w-full sm:w-auto px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2"
+              {/* Input Card */}
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+                <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Câu hỏi của bạn</label>
+                <textarea 
+                  value={question}
+                  onChange={e => setQuestion(e.target.value)}
+                  className="w-full p-4 bg-gray-50 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 mb-4 min-h-[100px] text-gray-800"
+                  placeholder="Ví dụ: Describe your daily routine..."
+                />
+                
+                <div className="flex flex-col sm:flex-row justify-between gap-4">
+                  <div className="w-full sm:w-auto">
+                    <select 
+                      value={difficulty} 
+                      onChange={e => setDifficulty(e.target.value)}
+                      className="p-3 bg-white border border-gray-300 rounded-lg text-sm w-full font-medium"
                     >
-                      {isGenerating ? <Spinner /> : (
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                      )}
-                      <span>{isGenerating ? 'Đang tạo...' : 'Tạo câu trả lời'}</span>
-                    </button>
+                      {Object.values(Difficulty).map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
                   </div>
+
+                  <button 
+                    onClick={handleGenerate} 
+                    disabled={loading || !question.trim()}
+                    className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto shadow-md hover:shadow-lg transition-all"
+                  >
+                    {loading ? <div className="spinner"></div> : (
+                      <>
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                        <span>Tạo câu trả lời</span>
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
 
+              {/* TTS Controls (Only show if result) */}
               {result && (
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col sm:flex-row items-center gap-4 justify-between">
-                   <div className="flex items-center gap-2 w-full sm:w-auto">
-                      <span className="text-sm font-medium text-gray-600 whitespace-nowrap">Giọng đọc:</span>
-                      <select
-                        value={ttsConfig.voice}
-                        onChange={(e) => setTtsConfig({...ttsConfig, voice: e.target.value})}
-                        className="w-full p-2 bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-lg"
-                      >
-                        {Object.values(VoiceName).map((v) => (
-                          <option key={v} value={v}>{v}</option>
-                        ))}
-                      </select>
-                   </div>
-                   <div className="flex items-center gap-4 w-full sm:w-auto">
-                      <span className="text-sm font-medium text-gray-600 whitespace-nowrap">Tốc độ: {ttsConfig.speed}x</span>
-                      <input
-                        type="range"
-                        min="0.5"
-                        max="2.0"
-                        step="0.1"
-                        value={ttsConfig.speed}
-                        onChange={(e) => {
-                          const newSpeed = parseFloat(e.target.value);
-                          setTtsConfig({...ttsConfig, speed: newSpeed});
-                          if (sourceNodeRef.current) {
-                              sourceNodeRef.current.playbackRate.value = newSpeed;
-                          }
-                        }}
-                        className="w-full h-2 bg-indigo-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                      />
-                   </div>
+                <div className="bg-white p-4 rounded-xl border flex flex-wrap gap-4 items-center justify-between">
+                  <div className="flex items-center gap-2 w-full sm:w-auto flex-1">
+                    <span className="text-sm font-bold text-gray-500 whitespace-nowrap">Giọng đọc:</span>
+                    <select 
+                      className="p-2 border rounded-lg text-sm w-full bg-gray-50"
+                      value={ttsConfig.voiceURI}
+                      onChange={e => setTtsConfig({...ttsConfig, voiceURI: e.target.value})}
+                    >
+                      {voices.length === 0 && <option>Default</option>}
+                      {voices.map(v => <option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <span className="text-sm font-bold text-gray-500 whitespace-nowrap">Tốc độ: {ttsConfig.speed}x</span>
+                    <input 
+                      type="range" min="0.5" max="2" step="0.1" 
+                      value={ttsConfig.speed}
+                      onChange={e => setTtsConfig({...ttsConfig, speed: Number(e.target.value)})}
+                      className="w-24 accent-indigo-600"
+                    />
+                  </div>
                 </div>
               )}
 
+              {/* Results Display */}
               {result && (
-                <div className="space-y-6 animate-fade-in-up">
-                  
-                  <div className="bg-white rounded-2xl shadow-lg border-l-4 border-indigo-500 overflow-hidden">
-                    <div className="p-5 md:p-8">
-                      <div className="flex justify-between items-start mb-4">
-                         <h2 className="text-xl font-bold text-gray-800">Toàn bộ câu trả lời</h2>
-                         <div className="flex gap-2">
-                            <button
-                              onClick={() => playAudio(result.english, 'full')}
-                              disabled={loadingAudioId !== null && loadingAudioId !== 'full'}
-                              className={`p-3 rounded-full transition-all ${
-                                activeAudioId === 'full' 
-                                ? 'bg-orange-100 text-orange-600 animate-pulse' 
-                                : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'
-                              }`}
-                              title="Nghe toàn bộ"
-                            >
-                               {loadingAudioId === 'full' ? (
-                                 <div className="h-6 w-6"><Spinner /></div>
-                               ) : activeAudioId === 'full' ? (
-                                 <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
-                               ) : (
-                                 <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                               )}
-                            </button>
-                            
-                            <button
-                              onClick={() => openPractice('answer', result.english)}
-                              className="p-3 rounded-full bg-green-50 text-green-600 hover:bg-green-100 transition-all"
-                              title="Luyện nói toàn bài"
-                            >
-                               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
-                            </button>
-                         </div>
-                      </div>
-
-                      <div className="prose prose-indigo max-w-none">
-                        <p className="text-lg md:text-xl text-gray-800 leading-relaxed font-medium">
-                          {result.english}
-                        </p>
-                        <p className="text-base text-gray-500 italic mt-4 border-t pt-4">
-                          {result.vietnamese}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                     <h3 className="text-lg font-bold text-gray-700 ml-2">Chi tiết từng câu</h3>
-                     <div className="grid gap-4">
-                        {result.sentences.map((sentence, idx) => (
-                          <div key={idx} className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 hover:border-indigo-200 transition-colors flex flex-col md:flex-row gap-4 items-start md:items-center">
-                             
-                             <div className="flex flex-row md:flex-col gap-2 shrink-0">
-                                <button
-                                  onClick={() => playAudio(sentence.english, idx)}
-                                  disabled={loadingAudioId !== null && loadingAudioId !== idx}
-                                  className={`p-2 rounded-lg transition-all flex items-center justify-center ${
-                                    activeAudioId === idx 
-                                    ? 'bg-orange-100 text-orange-600' 
-                                    : 'bg-gray-100 text-gray-600 hover:bg-indigo-50 hover:text-indigo-600'
-                                  }`}
-                                >
-                                  {loadingAudioId === idx ? (
-                                     <div className="h-5 w-5"><Spinner /></div>
-                                  ) : activeAudioId === idx ? (
-                                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
-                                  ) : (
-                                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                                  )}
-                                </button>
-                                
-                                <button
-                                  onClick={() => openPractice('sentence', sentence.english)}
-                                  className="p-2 rounded-lg bg-gray-100 text-gray-600 hover:bg-green-50 hover:text-green-600 transition-colors"
-                                >
-                                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
-                                </button>
-                             </div>
-
-                             <div className="flex-1 space-y-1">
-                                <p className="text-gray-900 font-medium text-lg leading-snug">{sentence.english}</p>
-                                <p className="text-gray-500 text-sm italic">{sentence.vietnamese}</p>
-                             </div>
-                          </div>
-                        ))}
+                <div className="animate-fade-in-up space-y-6">
+                  {/* Full Answer */}
+                  <div className="bg-white rounded-2xl shadow-lg border-l-4 border-indigo-500 p-6 md:p-8">
+                     <div className="flex justify-between items-start mb-4">
+                        <h2 className="text-xl font-bold text-gray-800">Câu trả lời hoàn chỉnh</h2>
+                        <div className="flex gap-2">
+                           <button 
+                             onClick={() => speak(result.english, 'full')} 
+                             className={`p-2 rounded-full transition-colors ${speakingId === 'full' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-600 hover:bg-indigo-100'}`}
+                             title="Nghe toàn bài"
+                           >
+                             <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d={speakingId === 'full' ? "M6 19h4V5H6v14zm8-14v14h4V5h-4z" : "M8 5v14l11-7z"}/></svg>
+                           </button>
+                           <button 
+                             onClick={() => setPracticeData({isOpen: true, text: result.english, type: 'answer'})} 
+                             className="p-2 rounded-full bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
+                             title="Luyện nói"
+                           >
+                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                           </button>
+                        </div>
                      </div>
+                     <p className="text-lg text-gray-900 font-medium leading-relaxed">{result.english}</p>
+                     <p className="text-gray-500 italic mt-4 border-t pt-4">{result.vietnamese}</p>
                   </div>
 
+                  {/* Sentences */}
+                  <div className="space-y-3">
+                    <h3 className="font-bold text-gray-700 ml-1">Chi tiết từng câu</h3>
+                    {result.sentences.map((s, idx) => (
+                      <div key={idx} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:border-indigo-300 transition-all flex gap-4 items-start">
+                        <div className="flex flex-col gap-2 shrink-0 pt-1">
+                           <button 
+                            onClick={() => speak(s.english, idx)} 
+                            className={`p-2 rounded-lg transition-colors ${speakingId === idx ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-600 hover:text-indigo-600'}`}
+                           >
+                             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d={speakingId === idx ? "M6 19h4V5H6v14zm8-14v14h4V5h-4z" : "M8 5v14l11-7z"}/></svg>
+                           </button>
+                           <button 
+                            onClick={() => setPracticeData({isOpen: true, text: s.english, type: 'sentence'})} 
+                            className="p-2 rounded-lg bg-gray-100 text-gray-600 hover:bg-green-100 hover:text-green-600"
+                           >
+                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                           </button>
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-900 text-lg">{s.english}</p>
+                          <p className="text-sm text-gray-500 italic mt-1">{s.vietnamese}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
 
-            <PracticeModal
-              isOpen={practiceModalOpen}
-              onClose={() => setPracticeModalOpen(false)}
-              targetText={practiceText}
-              type={practiceType}
+            <PracticeModal 
+              isOpen={practiceData.isOpen} 
+              onClose={() => setPracticeData({...practiceData, isOpen: false})} 
+              targetText={practiceData.text} 
+              type={practiceData.type}
             />
           </div>
         );
-      }
+      };
 
-      const rootElement = document.getElementById('root');
-      const root = ReactDOM.createRoot(rootElement);
-      root.render(
-        <React.StrictMode>
-          <App />
-        </React.StrictMode>
-      );
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
     </script>
   </body>
 </html>
